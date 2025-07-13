@@ -1,0 +1,79 @@
+# 深度学习框架
+torch>=1.12.0
+transformers>=4.20.0
+torchaudio>=0.12.0
+torchvision>=0.13.0
+
+# 自然语言处理
+jieba>=0.42.1
+spacy>=3.4.0
+nltk>=3.7
+opencc-python-reimplemented>=0.1.6
+
+# 图数据库
+neo4j>=5.0.0
+py2neo>=2021.2.3
+
+# 数据处理
+pandas>=1.4.0
+numpy>=1.21.0
+scikit-learn>=1.1.0
+scipy>=1.8.0
+
+# Web框架
+fastapi>=0.95.0
+uvicorn>=0.17.0
+streamlit>=1.25.0
+gradio>=3.35.0
+
+# 数据库
+sqlalchemy>=1.4.0
+pymongo>=4.0.0
+redis>=4.0.0
+
+# 数据采集
+requests>=2.28.0
+beautifulsoup4>=4.11.0
+scrapy>=2.6.0
+selenium>=4.2.0
+
+# 可视化
+matplotlib>=3.5.0
+seaborn>=0.11.0
+plotly>=5.8.0
+pyecharts>=1.9.0
+
+# 评估指标
+seqeval>=1.2.2
+rouge-score>=0.1.2
+bleu>=0.2.2
+
+# 工具库
+tqdm>=4.64.0
+click>=8.1.0
+python-dotenv>=0.20.0
+pyyaml>=6.0
+loguru>=0.6.0
+
+# 模型服务
+sentence-transformers>=2.2.0
+openai>=0.27.0
+
+# 容器化支持
+docker>=6.0.0
+
+# 开发工具
+jupyter>=1.0.0
+ipykernel>=6.13.0
+black>=22.3.0
+flake8>=4.0.0
+pytest>=7.1.0
+
+# GPU支持 (可选)
+# torch-geometric>=2.1.0
+# dgl>=0.9.0
+
+# 大模型支持
+# chatglm-6b
+# qwen
+# baichuan2
