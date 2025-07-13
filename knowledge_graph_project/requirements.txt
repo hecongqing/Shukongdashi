@@ -1,0 +1,74 @@
+# Web框架
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+
+# 数据处理
+pandas==2.1.3
+numpy==1.24.3
+scipy==1.11.4
+
+# 自然语言处理
+spacy==3.7.2
+jieba==0.42.1
+nltk==3.8.1
+textblob==0.17.1
+
+# 深度学习
+torch==2.1.1
+transformers==4.35.2
+datasets==2.14.6
+accelerate==0.24.1
+
+# 图数据库
+neo4j==5.14.1
+py2neo==2021.2.4
+
+# 向量数据库
+chromadb==0.4.18
+pymilvus==2.3.4
+
+# 数据采集
+scrapy==2.11.0
+requests==2.31.0
+beautifulsoup4==4.12.2
+selenium==4.15.2
+
+# PDF处理
+PyPDF2==3.0.1
+pdfplumber==0.10.2
+
+# 数据库
+sqlalchemy==2.0.23
+alembic==1.12.1
+
+# 配置管理
+pydantic==2.5.0
+python-dotenv==1.0.0
+
+# 日志和监控
+loguru==0.7.2
+prometheus-client==0.19.0
+
+# 测试
+pytest==7.4.3
+pytest-asyncio==0.21.1
+
+# 工具库
+tqdm==4.66.1
+click==8.1.7
+rich==13.7.0
+
+# 大模型相关
+sentence-transformers==2.2.2
+openai==1.3.7
+langchain==0.0.350
+
+# 可视化
+matplotlib==3.8.2
+seaborn==0.13.0
+plotly==5.17.0
+
+# 部署
+gunicorn==21.2.0
+docker==6.1.3
