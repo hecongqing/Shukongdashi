@@ -11,3 +11,6 @@ label-studio-sdk>=0.0.46
 torch>=2.0
 torchcrf>=1.1.0
 transformers>=4.39
+
+neo4j>=5.17.0
+PyYAML>=6.0
