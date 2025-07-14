@@ -1,0 +1,159 @@
+version: '3.8'
+
+services:
+  # Neo4j图数据库
+  neo4j:
+    image: neo4j:5.15.0
+    container_name: equipment-fault-neo4j
+    environment:
+      NEO4J_AUTH: neo4j/password123
+      NEO4J_dbms_security_procedures_unrestricted: gds.*,apoc.*
+      NEO4J_dbms_security_procedures_whitelist: gds.*,apoc.*
+      NEO4J_dbms_memory_heap_initial_size: 1G
+      NEO4J_dbms_memory_heap_max_size: 2G
+      NEO4J_dbms_memory_pagecache_size: 1G
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+      - neo4j_import:/var/lib/neo4j/import
+      - neo4j_plugins:/plugins
+    networks:
+      - equipment-fault-network
+
+  # MySQL数据库
+  mysql:
+    image: mysql:8.0
+    container_name: equipment-fault-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_DATABASE: equipment_fault
+      MYSQL_USER: app_user
+      MYSQL_PASSWORD: app_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./scripts/sql:/docker-entrypoint-initdb.d
+    command: --default-authentication-plugin=mysql_native_password
+    networks:
+      - equipment-fault-network
+
+  # Redis缓存
+  redis:
+    image: redis:7.2-alpine
+    container_name: equipment-fault-redis
+    command: redis-server --appendonly yes --requirepass redis123
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - equipment-fault-network
+
+  # 后端服务
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: equipment-fault-backend
+    environment:
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USER=neo4j
+      - NEO4J_PASSWORD=password123
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=app_user
+      - MYSQL_PASSWORD=app_password
+      - MYSQL_DATABASE=equipment_fault
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=redis123
+    ports:
+      - "8000:8000"
+    depends_on:
+      - neo4j
+      - mysql
+      - redis
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./logs:/app/logs
+    networks:
+      - equipment-fault-network
+
+  # 前端服务
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: equipment-fault-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8000
+    networks:
+      - equipment-fault-network
+
+  # Elasticsearch (用于全文搜索)
+  elasticsearch:
+    image: elasticsearch:8.11.0
+    container_name: equipment-fault-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - "ES_JAVA_OPTS=-Xms1g -Xmx1g"
+      - xpack.security.enabled=false
+      - xpack.security.enrollment.enabled=false
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - equipment-fault-network
+
+  # Kibana (Elasticsearch可视化)
+  kibana:
+    image: kibana:8.11.0
+    container_name: equipment-fault-kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    depends_on:
+      - elasticsearch
+    networks:
+      - equipment-fault-network
+
+  # Jupyter Notebook (用于数据分析和模型开发)
+  jupyter:
+    image: jupyter/datascience-notebook:latest
+    container_name: equipment-fault-jupyter
+    ports:
+      - "8888:8888"
+    environment:
+      - JUPYTER_ENABLE_LAB=yes
+      - JUPYTER_TOKEN=jupyter123
+    volumes:
+      - ./notebooks:/home/jovyan/work
+      - ./data:/home/jovyan/data
+      - ./models:/home/jovyan/models
+    networks:
+      - equipment-fault-network
+
+volumes:
+  neo4j_data:
+  neo4j_logs:
+  neo4j_import:
+  neo4j_plugins:
+  mysql_data:
+  redis_data:
+  elasticsearch_data:
+
+networks:
+  equipment-fault-network:
+    driver: bridge
