@@ -1,0 +1,65 @@
+# 基础依赖
+numpy==1.24.3
+pandas==2.0.3
+scikit-learn==1.3.0
+matplotlib==3.7.2
+seaborn==0.12.2
+
+# 深度学习框架
+torch==2.0.1
+transformers==4.31.0
+datasets==2.14.0
+
+# 大模型相关
+accelerate==0.20.3
+bitsandbytes==0.41.1
+sentencepiece==0.1.99
+protobuf==4.23.4
+
+# 图数据库
+neo4j==5.11.0
+py2neo==2021.2.3
+networkx==3.1
+
+# Web框架
+flask==2.3.2
+fastapi==0.101.1
+uvicorn==0.23.2
+requests==2.31.0
+
+# 数据处理
+beautifulsoup4==4.12.2
+lxml==4.9.3
+selenium==4.15.0
+scrapy==2.10.0
+
+# 自然语言处理
+jieba==0.42.1
+pyltp==0.2.1
+spacy==3.6.0
+nltk==3.8.1
+
+# 配置和日志
+pyyaml==6.0.1
+python-dotenv==1.0.0
+loguru==0.7.0
+
+# 测试
+pytest==7.4.0
+pytest-cov==4.1.0
+
+# 开发工具
+jupyter==1.0.0
+ipykernel==6.25.0
+black==23.7.0
+flake8==6.0.0
+
+# 可视化
+plotly==5.15.0
+dash==2.11.1
+streamlit==1.25.0
+
+# 其他工具
+tqdm==4.65.0
+click==8.1.7
+rich==13.5.2
