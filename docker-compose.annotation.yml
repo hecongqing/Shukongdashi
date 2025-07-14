@@ -1,0 +1,25 @@
+version: "3.9"
+services:
+  doccano:
+    image: doccano/doccano:1.8.2
+    container_name: doccano
+    restart: unless-stopped
+    environment:
+      - "ADMIN_USERNAME=admin"
+      - "ADMIN_PASSWORD=doccano123"
+      - "ADMIN_EMAIL=admin@example.com"
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./data/doccano:/home/doccano/app
+  labelstudio:
+    image: heartexlabs/label-studio:latest
+    container_name: labelstudio
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - LABEL_STUDIO_USERNAME=admin
+      - LABEL_STUDIO_PASSWORD=ls123456
+    volumes:
+      - ./data/labelstudio:/label-studio/data

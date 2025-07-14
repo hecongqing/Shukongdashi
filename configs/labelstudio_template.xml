@@ -1,0 +1,27 @@
+<View>
+  <Labels name="ner" toName="text" choice="single">
+    <Label value="Equipment" background="#f06292" />
+    <Label value="Component" background="#ba68c8" />
+    <Label value="Symptom" background="#4db6ac" />
+    <Label value="FaultCode" background="#7986cb" />
+    <Label value="Cause" background="#81c784" />
+    <Label value="Action" background="#ffb74d" />
+    <Label value="Parameter" background="#e57373" />
+    <Label value="Material" background="#64b5f6" />
+  </Labels>
+  <Relations name="rel" toName="text">
+    <Relation value="has_component" />
+    <Relation value="part_of" />
+    <Relation value="exhibits_symptom" />
+    <Relation value="has_fault_code" />
+    <Relation value="caused_by" />
+    <Relation value="leads_to" />
+    <Relation value="resolved_by" />
+    <Relation value="action_on" />
+    <Relation value="affects_parameter" />
+    <Relation value="parameter_of" />
+    <Relation value="uses_material" />
+    <Relation value="related_to" />
+  </Relations>
+  <Text name="text" value="$text" />
+</View>
