@@ -7,3 +7,7 @@ jieba>=0.42.1
 
 doccano-client>=1.5.0
 label-studio-sdk>=0.0.46
+
+torch>=2.0
+torchcrf>=1.1.0
+transformers>=4.39
