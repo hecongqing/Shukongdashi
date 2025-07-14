@@ -1,0 +1,26 @@
+{
+  "entities": [
+    {"id": 1, "name": "Equipment",  "color": "#f06292", "description": "整机，如数控机床、工业机器人、发动机"},
+    {"id": 2, "name": "Component",  "color": "#ba68c8", "description": "部件/子系统，如主轴、伺服电机"},
+    {"id": 3, "name": "Symptom",    "color": "#4db6ac", "description": "故障现象，如振动异常、温升过高"},
+    {"id": 4, "name": "FaultCode",  "color": "#7986cb", "description": "报警/错误码，如 E60、ALM-012"},
+    {"id": 5, "name": "Cause",      "color": "#81c784", "description": "根因，如轴承磨损、电缆松动"},
+    {"id": 6, "name": "Action",     "color": "#ffb74d", "description": "维修措施，如更换轴承、校准参数"},
+    {"id": 7, "name": "Parameter",  "color": "#e57373", "description": "工艺/诊断参数，如振动值、温度阈值"},
+    {"id": 8, "name": "Material",   "color": "#64b5f6", "description": "润滑油、冷却液等耗材"}
+  ],
+  "relations": [
+    {"name": "has_component",      "color": "#e91e63", "description": "Equipment -> Component"},
+    {"name": "part_of",            "color": "#9c27b0", "description": "Component -> Equipment"},
+    {"name": "exhibits_symptom",   "color": "#009688", "description": "Equipment/Component -> Symptom"},
+    {"name": "has_fault_code",     "color": "#3f51b5", "description": "Equipment/Component -> FaultCode"},
+    {"name": "caused_by",          "color": "#4caf50", "description": "Symptom/FaultCode -> Cause"},
+    {"name": "leads_to",           "color": "#8bc34a", "description": "Cause -> Symptom/Failure"},
+    {"name": "resolved_by",        "color": "#ff9800", "description": "Cause/Fault -> Action"},
+    {"name": "action_on",          "color": "#ff5722", "description": "Action -> Component/Equipment"},
+    {"name": "affects_parameter",  "color": "#795548", "description": "Cause/Fault -> Parameter"},
+    {"name": "parameter_of",       "color": "#607d8b", "description": "Parameter -> Component/Equipment"},
+    {"name": "uses_material",      "color": "#00bcd4", "description": "Component -> Material"},
+    {"name": "related_to",         "color": "#cddc39", "description": "泛化补充关系"}
+  ]
+}
