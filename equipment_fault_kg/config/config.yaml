@@ -1,0 +1,144 @@
+# 装备制造故障知识图谱配置文件
+
+# 数据库配置
+database:
+  neo4j:
+    uri: "bolt://localhost:7687"
+    user: "neo4j"
+    password: "password"
+    database: "neo4j"
+  
+  sqlite:
+    path: "data/equipment_fault.db"
+
+# 数据采集配置
+data_collection:
+  # 爬虫配置
+  crawler:
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    delay: 1.0  # 请求间隔(秒)
+    timeout: 30
+    max_retries: 3
+  
+  # 数据源配置
+  sources:
+    - name: "故障案例库"
+      url: "https://example.com/fault-cases"
+      type: "web"
+    - name: "技术手册"
+      url: "https://example.com/manuals"
+      type: "pdf"
+    - name: "专家知识库"
+      url: "https://example.com/expert-knowledge"
+      type: "api"
+
+# 实体抽取配置
+entity_extraction:
+  # 实体类型定义
+  entity_types:
+    - Equipment      # 装备
+    - Component      # 部件
+    - Fault          # 故障
+    - Cause          # 原因
+    - Solution       # 解决方案
+    - Symptom        # 症状
+    - Material       # 材料
+    - Tool           # 工具
+  
+  # 模型配置
+  model:
+    name: "bert-base-chinese"
+    max_length: 512
+    batch_size: 16
+    learning_rate: 2e-5
+    epochs: 10
+  
+  # 标注配置
+  annotation:
+    min_confidence: 0.8
+    overlap_threshold: 0.5
+
+# 关系抽取配置
+relation_extraction:
+  # 关系类型定义
+  relation_types:
+    - HAS_FAULT        # 装备-故障
+    - HAS_COMPONENT    # 装备-部件
+    - CAUSES           # 原因-故障
+    - SOLVES           # 解决方案-故障
+    - HAS_SYMPTOM      # 故障-症状
+    - REQUIRES_TOOL    # 解决方案-工具
+    - REQUIRES_MATERIAL # 解决方案-材料
+  
+  # 模型配置
+  model:
+    name: "bert-base-chinese"
+    max_length: 256
+    batch_size: 32
+    learning_rate: 3e-5
+    epochs: 15
+
+# 大模型配置
+llm:
+  # 模型选择
+  model_name: "THUDM/chatglm2-6b"
+  model_path: "models/chatglm2-6b"
+  
+  # 量化配置
+  quantization:
+    load_in_8bit: true
+    load_in_4bit: false
+  
+  # 推理配置
+  inference:
+    max_length: 2048
+    temperature: 0.7
+    top_p: 0.9
+    repetition_penalty: 1.1
+  
+  # API配置
+  api:
+    host: "0.0.0.0"
+    port: 8000
+    workers: 1
+
+# Neo4j问答配置
+neo4j_qa:
+  # 查询模板
+  query_templates:
+    fault_diagnosis: |
+      MATCH (e:Equipment)-[:HAS_FAULT]->(f:Fault)
+      WHERE e.name CONTAINS $equipment
+      RETURN e, f
+    cause_analysis: |
+      MATCH (f:Fault)-[:CAUSES]-(c:Cause)
+      WHERE f.name CONTAINS $fault
+      RETURN f, c
+    solution_search: |
+      MATCH (f:Fault)-[:SOLVES]-(s:Solution)
+      WHERE f.name CONTAINS $fault
+      RETURN f, s
+  
+  # 相似度搜索
+  similarity:
+    threshold: 0.7
+    top_k: 5
+
+# 日志配置
+logging:
+  level: "INFO"
+  format: "{time:YYYY-MM-DD HH:mm:ss} | {level} | {name}:{function}:{line} - {message}"
+  file: "logs/app.log"
+
+# 路径配置
+paths:
+  data: "data"
+  models: "models"
+  logs: "logs"
+  results: "results"
+
+# 实验配置
+experiment:
+  random_seed: 42
+  test_size: 0.2
+  validation_size: 0.1
