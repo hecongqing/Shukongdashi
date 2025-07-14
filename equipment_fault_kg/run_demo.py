@@ -1,238 +1,244 @@
 #!/usr/bin/env python3
 """
-装备制造故障知识图谱 - 快速启动演示
-
-这个脚本提供了一个完整的演示，展示知识图谱构建的各个步骤
+设备故障知识图谱信息抽取系统演示脚本
 """
 
 import os
 import sys
 import json
+import logging
 from pathlib import Path
 
 # 添加src目录到Python路径
-sys.path.append('src')
+sys.path.append(str(Path(__file__).parent / "src"))
 
-def create_sample_data():
-    """创建示例数据"""
-    sample_data = [
+from src.entity_extraction.data_processor import DataProcessor
+from src.deployment.pipeline import InformationExtractionPipeline
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def create_demo_data():
+    """创建演示数据"""
+    demo_data = [
         {
-            "id": "001",
-            "title": "数控车床主轴异常振动故障诊断",
-            "content": "某工厂数控车床在加工过程中出现主轴异常振动，经检查发现主轴轴承磨损严重，更换轴承后故障排除。",
-            "source": "示例数据",
-            "url": ""
+            "ID": "DEMO001",
+            "text": "故障现象:车速到100迈以上发动机盖后部随着车速抖动。故障原因简要分析:经技术人员试车；怀疑发动机盖锁或发动机盖铰链松旷。",
+            "spo_list": [
+                {
+                    "h": {"name": "发动机盖", "pos": [14, 18]},
+                    "t": {"name": "抖动", "pos": [24, 26]},
+                    "relation": "部件故障"
+                },
+                {
+                    "h": {"name": "发动机盖锁", "pos": [46, 51]},
+                    "t": {"name": "松旷", "pos": [58, 60]},
+                    "relation": "部件故障"
+                },
+                {
+                    "h": {"name": "发动机盖铰链", "pos": [52, 58]},
+                    "t": {"name": "松旷", "pos": [58, 60]},
+                    "relation": "部件故障"
+                }
+            ]
         },
         {
-            "id": "002", 
-            "title": "加工中心伺服电机过热故障",
-            "content": "加工中心X轴伺服电机在运行过程中出现过热现象，检查发现电机散热风扇故障，更换风扇后恢复正常。",
-            "source": "示例数据",
-            "url": ""
+            "ID": "DEMO002",
+            "text": "燃油泵的作用是将燃油加压输送到喷油器，当燃油泵损坏后，燃油将不能正常喷入发动机气缸，因此将影响发动机的正常运转，使得发动机出现加速不良的症状。",
+            "spo_list": [
+                {
+                    "h": {"name": "燃油泵", "pos": [0, 3]},
+                    "t": {"name": "损坏", "pos": [15, 17]},
+                    "relation": "部件故障"
+                },
+                {
+                    "h": {"name": "发动机", "pos": [25, 28]},
+                    "t": {"name": "加速不良", "pos": [45, 49]},
+                    "relation": "部件故障"
+                }
+            ]
         },
         {
-            "id": "003",
-            "title": "铣床进给系统精度下降问题", 
-            "content": "铣床进给系统精度下降，经检查发现滚珠丝杠磨损，更换丝杠并重新调整后精度恢复。",
-            "source": "示例数据",
-            "url": ""
+            "ID": "DEMO003",
+            "text": "减振器活塞与缸体发卡，工作阻力过大诊断排除。当液面变低时，需要检查燃油泵的工作状态。",
+            "spo_list": [
+                {
+                    "h": {"name": "减振器活塞", "pos": [0, 5]},
+                    "t": {"name": "发卡", "pos": [6, 8]},
+                    "relation": "部件故障"
+                },
+                {
+                    "h": {"name": "液面", "pos": [20, 22]},
+                    "t": {"name": "变低", "pos": [23, 25]},
+                    "relation": "性能故障"
+                },
+                {
+                    "h": {"name": "燃油泵", "pos": [32, 35]},
+                    "t": {"name": "工作状态", "pos": [39, 43]},
+                    "relation": "检测工具"
+                }
+            ]
         }
     ]
     
-    # 保存到data/raw目录
-    os.makedirs('data/raw', exist_ok=True)
-    with open('data/raw/sample_fault_cases.json', 'w', encoding='utf-8') as f:
-        json.dump(sample_data, f, ensure_ascii=False, indent=2)
+    # 保存演示数据
+    with open("data/demo_train.json", "w", encoding="utf-8") as f:
+        for item in demo_data:
+            f.write(json.dumps(item, ensure_ascii=False) + "\n")
     
-    print("✓ 示例数据已创建")
-    return sample_data
+    logger.info("演示数据已创建: data/demo_train.json")
+    return demo_data
 
-def run_data_processing():
-    """运行数据处理"""
-    try:
-        from data_collection import DataProcessor
-        import yaml
-        
-        # 加载配置
-        with open('config/config.yaml', 'r', encoding='utf-8') as f:
-            config = yaml.safe_load(f)
-        
-        # 加载示例数据
-        with open('data/raw/sample_fault_cases.json', 'r', encoding='utf-8') as f:
-            raw_data = json.load(f)
-        
-        # 处理数据
-        processor = DataProcessor(config['entity_extraction'])
-        processed_data = processor.process_batch(raw_data)
-        
-        # 保存处理后的数据
-        os.makedirs('data/processed', exist_ok=True)
-        processor.save_processed_data(processed_data, 'data/processed/processed_fault_cases.json')
-        
-        print("✓ 数据处理完成")
-        return processed_data
-        
-    except Exception as e:
-        print(f"✗ 数据处理失败: {e}")
-        return None
-
-def run_entity_extraction(processed_data):
-    """运行实体抽取"""
-    try:
-        from entity_extraction import NERModel
-        import yaml
-        
-        # 加载配置
-        with open('config/config.yaml', 'r', encoding='utf-8') as f:
-            config = yaml.safe_load(f)
-        
-        # 初始化NER模型
-        ner_model = NERModel(config['entity_extraction'])
-        
-        # 抽取实体
-        all_entities = []
-        for item in processed_data:
-            text = f"{item['title']} {item['content']}"
-            entities = ner_model.predict(text)
-            all_entities.extend(entities)
-        
-        # 保存实体
-        os.makedirs('data/annotated', exist_ok=True)
-        with open('data/annotated/extracted_entities.json', 'w', encoding='utf-8') as f:
-            json.dump(all_entities, f, ensure_ascii=False, indent=2)
-        
-        print(f"✓ 实体抽取完成，共抽取 {len(all_entities)} 个实体")
-        return all_entities
-        
-    except Exception as e:
-        print(f"✗ 实体抽取失败: {e}")
-        return []
-
-def run_knowledge_graph_construction(entities):
-    """运行知识图谱构建"""
-    try:
-        from neo4j_qa import GraphManager
-        import yaml
-        
-        # 加载配置
-        with open('config/config.yaml', 'r', encoding='utf-8') as f:
-            config = yaml.safe_load(f)
-        
-        # 初始化图管理器
-        graph_manager = GraphManager(config['database']['neo4j'])
-        
-        # 构建知识图谱
-        graph_manager.build_knowledge_graph(entities, [])
-        
-        # 获取统计信息
-        stats = graph_manager.get_statistics()
-        
-        print("✓ 知识图谱构建完成")
-        print(f"  节点统计: {stats.get('nodes', {})}")
-        print(f"  关系统计: {stats.get('relations', {})}")
-        
-        return graph_manager
-        
-    except Exception as e:
-        print(f"✗ 知识图谱构建失败: {e}")
-        print("  注意：需要先启动Neo4j数据库")
-        return None
-
-def run_qa_demo(graph_manager):
-    """运行问答演示"""
-    if not graph_manager:
-        print("✗ 无法运行问答演示，图管理器未初始化")
-        return
+def run_demo():
+    """运行演示"""
+    logger.info("=" * 60)
+    logger.info("设备故障知识图谱信息抽取系统演示")
+    logger.info("=" * 60)
     
-    print("\n=== 问答演示 ===")
-    print("您可以询问以下类型的问题：")
-    print("- 某装备的故障信息")
-    print("- 某故障的原因") 
-    print("- 某故障的解决方案")
-    print("输入 'quit' 退出")
+    # 创建必要的目录
+    directories = ["data", "models/ner_model", "models/re_model", "results"]
+    for directory in directories:
+        Path(directory).mkdir(parents=True, exist_ok=True)
     
-    while True:
+    # 1. 创建演示数据
+    logger.info("\n1. 创建演示数据...")
+    demo_data = create_demo_data()
+    
+    # 2. 数据处理演示
+    logger.info("\n2. 数据处理演示...")
+    processor = DataProcessor()
+    
+    # 提取实体
+    print("\n   实体提取结果:")
+    for i, sample in enumerate(demo_data):
+        entities = processor.extract_entities_from_spo(sample['spo_list'])
+        print(f"   样本 {i+1}: {len(entities)} 个实体")
+        for entity in entities:
+            print(f"     - {entity.name} ({entity.type}) 位置: [{entity.start}, {entity.end}]")
+    
+    # 转换为训练格式
+    ner_data = processor.convert_to_ner_format(demo_data)
+    re_data = processor.convert_to_re_format(demo_data)
+    
+    print(f"\n   数据转换结果:")
+    print(f"   - NER样本: {len(ner_data)} 个")
+    print(f"   - RE样本: {len(re_data)} 个")
+    
+    # 3. 模型训练演示（如果模型不存在）
+    logger.info("\n3. 模型训练演示...")
+    
+    ner_model_path = "models/ner_model"
+    re_model_path = "models/re_model"
+    
+    if not os.path.exists(os.path.join(ner_model_path, "ner_model.pth")):
+        logger.info("   NER模型不存在，开始训练...")
         try:
-            question = input("\n请输入问题: ").strip()
+            from src.entity_extraction.trainer import NERTrainer
             
-            if question.lower() in ['quit', 'exit', '退出']:
-                break
+            # 划分数据
+            train_data, val_data, test_data = processor.split_data(ner_data)
             
-            if not question:
-                continue
-            
-            # 简单的问答逻辑
-            if "故障" in question and "装备" in question:
-                equipment_name = question.split("装备")[1].split("故障")[0] if "装备" in question and "故障" in question else ""
-                if equipment_name:
-                    results = graph_manager.query_equipment_faults(equipment_name)
-                    if results:
-                        print(f"\n装备 {equipment_name} 的故障信息：")
-                        for result in results:
-                            print(f"- 故障：{result['fault']}")
-                            print(f"  描述：{result['description']}")
-                    else:
-                        print(f"未找到装备 {equipment_name} 的故障信息")
-            
-            elif "原因" in question:
-                fault_name = question.split("故障")[1].split("原因")[0] if "故障" in question and "原因" in question else ""
-                if fault_name:
-                    results = graph_manager.query_fault_causes(fault_name)
-                    if results:
-                        print(f"\n故障 {fault_name} 的可能原因：")
-                        for result in results:
-                            print(f"- {result['cause']}")
-                            print(f"  描述：{result['description']}")
-                    else:
-                        print(f"未找到故障 {fault_name} 的原因信息")
-            
-            else:
-                print("抱歉，我无法理解您的问题。请尝试询问装备故障、故障原因或解决方案相关的问题。")
-                
-        except KeyboardInterrupt:
-            break
+            # 训练NER模型
+            trainer = NERTrainer()
+            best_f1 = trainer.train(
+                train_data=train_data,
+                val_data=val_data,
+                output_dir=ner_model_path,
+                batch_size=8,  # 使用较小的batch size
+                epochs=3       # 使用较少的epochs用于演示
+            )
+            logger.info(f"   NER模型训练完成，最佳F1: {best_f1:.4f}")
         except Exception as e:
-            print(f"发生错误: {e}")
-
-def main():
-    """主函数"""
-    print("=== 装备制造故障知识图谱演示 ===\n")
+            logger.warning(f"   NER模型训练失败: {e}")
+    else:
+        logger.info("   NER模型已存在")
     
-    # 1. 创建示例数据
-    print("1. 创建示例数据...")
-    create_sample_data()
+    if not os.path.exists(os.path.join(re_model_path, "re_model.pth")):
+        logger.info("   RE模型不存在，开始训练...")
+        try:
+            from src.relation_extraction.trainer import RETrainer
+            
+            # 划分数据
+            train_data, val_data, test_data = processor.split_data(re_data)
+            
+            # 训练RE模型
+            trainer = RETrainer()
+            best_f1 = trainer.train(
+                train_data=train_data,
+                val_data=val_data,
+                output_dir=re_model_path,
+                batch_size=8,  # 使用较小的batch size
+                epochs=3       # 使用较少的epochs用于演示
+            )
+            logger.info(f"   RE模型训练完成，最佳F1: {best_f1:.4f}")
+        except Exception as e:
+            logger.warning(f"   RE模型训练失败: {e}")
+    else:
+        logger.info("   RE模型已存在")
     
-    # 2. 数据处理
-    print("\n2. 数据处理...")
-    processed_data = run_data_processing()
-    if not processed_data:
-        print("数据处理失败，退出演示")
-        return
+    # 4. 模型推理演示
+    logger.info("\n4. 模型推理演示...")
     
-    # 3. 实体抽取
-    print("\n3. 实体抽取...")
-    entities = run_entity_extraction(processed_data)
+    if (os.path.exists(os.path.join(ner_model_path, "ner_model.pth")) and 
+        os.path.exists(os.path.join(re_model_path, "re_model.pth"))):
+        
+        try:
+            # 初始化管道
+            pipeline = InformationExtractionPipeline(ner_model_path, re_model_path)
+            
+            # 测试文本
+            test_texts = [
+                "故障现象:车速到100迈以上发动机盖后部随着车速抖动。",
+                "燃油泵损坏导致发动机无法启动。",
+                "减振器活塞与缸体发卡，工作阻力过大。",
+                "当液面变低时，需要检查燃油泵的工作状态。",
+                "使用漏电测试仪检测电流异常情况。"
+            ]
+            
+            print("\n   推理结果:")
+            for i, text in enumerate(test_texts):
+                print(f"\n   文本 {i+1}: {text}")
+                
+                # 执行抽取
+                result = pipeline.extract(text)
+                
+                # 显示实体
+                if result['entities']:
+                    print(f"   实体 ({len(result['entities'])}):")
+                    for entity in result['entities']:
+                        print(f"     - {entity['text']} ({entity['type']}) 位置: [{entity['start']}, {entity['end']}]")
+                else:
+                    print("   实体: 无")
+                
+                # 显示关系
+                if result['relations']:
+                    print(f"   关系 ({len(result['relations'])}):")
+                    for relation in result['relations']:
+                        print(f"     - {relation['head']['text']} --{relation['relation']}--> {relation['tail']['text']}")
+                else:
+                    print("   关系: 无")
+        
+        except Exception as e:
+            logger.error(f"   模型推理失败: {e}")
+    else:
+        logger.warning("   模型文件不存在，跳过推理演示")
     
-    # 4. 知识图谱构建
-    print("\n4. 知识图谱构建...")
-    graph_manager = run_knowledge_graph_construction(entities)
+    # 5. 总结
+    logger.info("\n" + "=" * 60)
+    logger.info("演示完成！")
+    logger.info("\n系统功能:")
+    logger.info("✓ 数据处理: 支持JSON格式的训练数据处理")
+    logger.info("✓ 实体抽取: 支持4种实体类型的识别")
+    logger.info("✓ 关系抽取: 支持4种关系类型的识别")
+    logger.info("✓ 模型训练: 基于BERT的深度学习模型")
+    logger.info("✓ 端到端推理: 完整的文本到三元组抽取")
+    logger.info("✓ API服务: RESTful API接口")
     
-    # 5. 问答演示
-    if graph_manager:
-        run_qa_demo(graph_manager)
-    
-    print("\n=== 演示完成 ===")
-    print("\n项目文件说明：")
-    print("- src/: 源代码目录")
-    print("- config/: 配置文件目录")
-    print("- data/: 数据目录")
-    print("- notebooks/: Jupyter notebooks")
-    print("- models/: 模型文件目录")
-    print("\n使用说明：")
-    print("1. 安装依赖: pip install -r requirements.txt")
-    print("2. 配置Neo4j数据库")
-    print("3. 运行主程序: python src/main.py")
-    print("4. 查看详细文档: README.md")
+    logger.info("\n下一步:")
+    logger.info("1. 准备更多训练数据以提高模型性能")
+    logger.info("2. 调整训练参数以获得更好的效果")
+    logger.info("3. 部署到生产环境")
+    logger.info("4. 集成到知识图谱构建流程中")
 
 if __name__ == "__main__":
-    main()
+    run_demo()
