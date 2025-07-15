@@ -60,28 +60,32 @@ class NERPredictor:
         if not self.model:
             raise ValueError("Model not loaded")
         
-        # 预处理文本
-        tokens = []
-        char_to_token = []  # 字符到token的映射
-        
-        # 添加[CLS]标记
-        tokens.append('[CLS]')
-        char_to_token.append(-1)  # [CLS]不对应任何字符
-        
-        # 处理文本
+        # NOTE:
+        # 我们需要维护一个字符 (原始文本下标) -> token 下标的精确映射, 用于后续解码。
+        # 之前的实现因为在列表首尾插入了 [CLS]/[SEP] 对位值 -1, 导致与文本下标出现整体偏移,
+        # 进而造成实体位置不正确。此处重写映射逻辑：
+        #   1. char_to_token 的长度应与文本字符数一致。
+        #   2. 每个条目存储对应字符的 **首个** sub-token 在 tokens 中的索引。
+
+        tokens: List[str] = ['[CLS]']
+        char_to_token: List[int] = []
+
+        # 处理文本每个字符并记录映射
         for char in text:
+            # BertTokenizer.tokenize 对中文单字通常返回单 token, 对罕见字可能拆分成多 sub-token。
             sub_tokens = self.tokenizer.tokenize(char)
             if not sub_tokens:
                 sub_tokens = ['[UNK]']
-            
+
+            # 当前字符在 tokens 中的起始索引 (首个 sub-token)
+            char_start_token_idx = len(tokens)
+            char_to_token.append(char_start_token_idx)
+
+            # 将该字符的 sub-token 添加到 tokens 列表
             tokens.extend(sub_tokens)
-            # 记录每个字符对应的token位置
-            for _ in range(len(sub_tokens)):
-                char_to_token.append(len(tokens) - 1)
-        
+
         # 添加[SEP]标记
         tokens.append('[SEP]')
-        char_to_token.append(-1)  # [SEP]不对应任何字符
         
         # 转换为ID
         input_ids = self.tokenizer.convert_tokens_to_ids(tokens)
