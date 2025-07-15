@@ -5,6 +5,7 @@ import json
 import logging
 from typing import List, Dict, Tuple
 import re
+import os
 
 from .train_ner import NERModel
 
@@ -32,8 +33,7 @@ class NERPredictor:
             # 加载tokenizer
             self.tokenizer = BertTokenizer.from_pretrained('bert-base-chinese')
             
-            # 加载标签映射
-            num_labels = checkpoint['label2id']
+            # 加载标签映射 - 保持与训练时一致
             self.label2id = {
                 'O': 0,
                 'B-COMPONENT': 1, 'I-COMPONENT': 2,
@@ -43,6 +43,9 @@ class NERPredictor:
             }
             self.id2label = {v: k for k, v in self.label2id.items()}
             
+            # 获取标签数量
+            num_labels = len(self.label2id)
+            
             # 加载模型
             self.model = NERModel('bert-base-chinese', num_labels)
             self.model.load_state_dict(checkpoint['model_state_dict'])
@@ -50,6 +53,7 @@ class NERPredictor:
             self.model.eval()
             
             logger.info(f"Model loaded successfully from {self.model_path}")
+            logger.info(f"Number of labels: {num_labels}")
             
         except Exception as e:
             logger.error(f"Failed to load model: {e}")
@@ -60,32 +64,45 @@ class NERPredictor:
         if not self.model:
             raise ValueError("Model not loaded")
         
-        # 预处理文本
+        # 预处理文本 - 与训练时保持一致
         tokens = []
         char_to_token = []  # 字符到token的映射
         
         # 添加[CLS]标记
         tokens.append('[CLS]')
-        char_to_token.append(-1)  # [CLS]不对应任何字符
         
-        # 处理文本
-        for char in text:
+        # 处理文本 - 按字符逐个处理，与训练时一致
+        for i, char in enumerate(text):
+            # 记录当前字符对应的token起始位置
+            char_start_token = len(tokens)
+            
+            # 分词
             sub_tokens = self.tokenizer.tokenize(char)
             if not sub_tokens:
                 sub_tokens = ['[UNK]']
             
             tokens.extend(sub_tokens)
-            # 记录每个字符对应的token位置
-            for _ in range(len(sub_tokens)):
-                char_to_token.append(len(tokens) - 1)
+            
+            # 记录字符对应的token位置（使用第一个sub-token的位置）
+            char_to_token.append(char_start_token)
         
         # 添加[SEP]标记
         tokens.append('[SEP]')
-        char_to_token.append(-1)  # [SEP]不对应任何字符
+        
+        # 截断处理
+        max_length = 512
+        if len(tokens) > max_length:
+            tokens = tokens[:max_length]
         
         # 转换为ID
         input_ids = self.tokenizer.convert_tokens_to_ids(tokens)
         attention_mask = [1] * len(input_ids)
+        
+        # 填充到最大长度
+        if len(input_ids) < max_length:
+            padding_length = max_length - len(input_ids)
+            input_ids.extend([0] * padding_length)  # 0 是 [PAD] token 的 ID
+            attention_mask.extend([0] * padding_length)
         
         # 转换为tensor
         input_ids = torch.tensor([input_ids], dtype=torch.long).to(self.device)
@@ -110,10 +127,14 @@ class NERPredictor:
         current_entity = None
         
         for i, char in enumerate(text):
-            if i >= len(char_to_token) or char_to_token[i] == -1:
+            # 检查索引范围
+            if i >= len(char_to_token):
                 continue
             
-            token_idx = char_to_token[i]
+            # 获取字符对应的token位置（跳过[CLS]，所以+1）
+            token_idx = char_to_token[i] + 1  # +1 是因为第一个token是[CLS]
+            
+            # 检查token索引范围
             if token_idx >= len(pred_labels):
                 continue
             
@@ -125,20 +146,27 @@ class NERPredictor:
                 if current_entity:
                     entities.append(current_entity)
                 
+                entity_type = label[2:]  # 去掉B-前缀
                 current_entity = {
                     'name': char,
-                    'type': label[2:],  # 去掉B-前缀
+                    'type': entity_type,
                     'start_pos': i,
                     'end_pos': i + 1
                 }
             
-            elif label.startswith('I-') and current_entity and label[2:] == current_entity['type']:
-                # 继续当前实体
-                current_entity['name'] += char
-                current_entity['end_pos'] = i + 1
+            elif label.startswith('I-') and current_entity:
+                entity_type = label[2:]  # 去掉I-前缀
+                # 继续当前实体（只有当类型匹配时）
+                if entity_type == current_entity['type']:
+                    current_entity['name'] += char
+                    current_entity['end_pos'] = i + 1
+                else:
+                    # 类型不匹配，结束当前实体
+                    entities.append(current_entity)
+                    current_entity = None
             
-            else:
-                # 结束当前实体
+            elif label == 'O':
+                # 非实体标签，结束当前实体
                 if current_entity:
                     entities.append(current_entity)
                     current_entity = None
@@ -292,13 +320,47 @@ if __name__ == "__main__":
     # 测试预测器
     sample_text = "故障现象:车速到100迈以上发动机盖后部随着车速抖动。故障原因简要分析:经技术人员试车；怀疑发动机盖锁或发动机盖铰链松旷。"
     
-    # 注意：这里需要先训练模型才能测试
-    # predictor = NERPredictor('./ner_models/best_ner_model.pth')
-    # entities = predictor.predict(sample_text)
-    # print("预测的实体:")
-    # for entity in entities:
-    #     print(f"- {entity['name']} ({entity['type']}) at position {entity['start_pos']}-{entity['end_pos']}")
+    print(f"测试文本: {sample_text}")
+    print(f"文本长度: {len(sample_text)} 字符")
+    
+    # 测试tokenization
+    from transformers import BertTokenizer
+    tokenizer = BertTokenizer.from_pretrained('bert-base-chinese')
+    
+    print("\n=== Tokenization 测试 ===")
+    tokens = ['[CLS]']
+    char_to_token = []
+    
+    for i, char in enumerate(sample_text):
+        char_start_token = len(tokens)
+        sub_tokens = tokenizer.tokenize(char)
+        if not sub_tokens:
+            sub_tokens = ['[UNK]']
+        tokens.extend(sub_tokens)
+        char_to_token.append(char_start_token)
+        print(f"字符 '{char}' -> tokens: {sub_tokens}, token_pos: {char_start_token}")
+    
+    tokens.append('[SEP]')
+    print(f"\n总tokens数: {len(tokens)}")
+    print(f"字符到token映射长度: {len(char_to_token)}")
+    
+    # 注意：需要训练好的模型文件才能测试预测
+    try:
+        model_path = './ner_models/best_ner_model.pth'
+        if os.path.exists(model_path):
+            print(f"\n=== NER 预测测试 ===")
+            predictor = NERPredictor(model_path)
+            entities = predictor.predict(sample_text)
+            print("预测的实体:")
+            for entity in entities:
+                print(f"- {entity['name']} ({entity['type']}) at position {entity['start_pos']}-{entity['end_pos']}")
+        else:
+            print(f"\n模型文件不存在: {model_path}")
+            print("请先训练模型再测试预测功能")
+    except Exception as e:
+        print(f"\n预测测试失败: {e}")
     
     # 创建API服务
+    print(f"\n=== 启动 API 服务 ===")
     app = create_ner_api()
     app.run(host='0.0.0.0', port=5001, debug=True)
