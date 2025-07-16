@@ -3,7 +3,7 @@ import torch.nn as nn
 from transformers import BertTokenizer, BertModel
 import json
 import logging
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 import re
 import itertools
 
@@ -13,16 +13,18 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class RelationPredictor:
-    """关系抽取预测器类"""
-    
-    def __init__(self, model_path: str, device: str = None):
+    """关系抽取预测器类 (supports vanilla BERT & R-BERT)"""
+
+    def __init__(self, model_path: str, device: Optional[str] = None, model_type: str = 'bert'):
         self.device = device if device else ('cuda' if torch.cuda.is_available() else 'cpu')
         self.model_path = model_path
+        self.model_type = model_type.lower()
+
         self.model = None
         self.tokenizer = None
         self.relation2id = None
         self.id2relation = None
-        
+
         self.load_model()
     
     def load_model(self):
@@ -44,7 +46,13 @@ class RelationPredictor:
             self.id2relation = {v: k for k, v in self.relation2id.items()}
             
             # 加载模型
-            self.model = RelationModel('bert-base-chinese', num_relations)
+            if self.model_type == 'rbert':
+                from .rbert_model import RbertRelationModel, add_special_tokens
+                add_special_tokens(self.tokenizer)
+                self.model = RbertRelationModel('bert-base-chinese', num_relations)
+                self.model.bert.resize_token_embeddings(len(self.tokenizer))
+            else:
+                self.model = RelationModel('bert-base-chinese', num_relations)
             self.model.load_state_dict(checkpoint['model_state_dict'])
             self.model.to(self.device)
             self.model.eval()
@@ -60,8 +68,20 @@ class RelationPredictor:
         if not self.model:
             raise ValueError("Model not loaded")
         
-        # 构建输入文本
-        input_text = f"{head_entity} [SEP] {tail_entity} [SEP] {text}"
+        if self.model_type == 'rbert':
+            from .rbert_model import mark_entities
+            # Need positions – naive string find
+            h_start = text.find(head_entity)
+            t_start = text.find(tail_entity)
+            if h_start == -1 or t_start == -1:
+                raise ValueError("Entities not found in text for R-BERT predictor.")
+
+            head_pos = [h_start, h_start + len(head_entity)]
+            tail_pos = [t_start, t_start + len(tail_entity)]
+            input_text = mark_entities(text, head_pos, tail_pos)
+        else:
+            # Vanilla BERT input style
+            input_text = f"{head_entity} [SEP] {tail_entity} [SEP] {text}"
         
         # 编码
         encoding = self.tokenizer(
@@ -75,20 +95,34 @@ class RelationPredictor:
         input_ids = encoding['input_ids'].to(self.device)
         attention_mask = encoding['attention_mask'].to(self.device)
         
-        # 预测
         with torch.no_grad():
-            _, binary_logits, relation_logits = self.model(input_ids, attention_mask)
-            
-            # 二分类预测
-            binary_probs = torch.softmax(binary_logits, dim=-1)
-            binary_pred = torch.argmax(binary_logits, dim=-1).item()
-            binary_confidence = binary_probs[0][binary_pred].item()
-            
-            # 关系分类预测
-            relation_probs = torch.softmax(relation_logits, dim=-1)
-            relation_pred = torch.argmax(relation_logits, dim=-1).item()
-            relation_confidence = relation_probs[0][relation_pred].item()
-            
+            if self.model_type == 'rbert':
+                # locate marker positions
+                e1_token_id = self.tokenizer.convert_tokens_to_ids('[E1]')
+                e2_token_id = self.tokenizer.convert_tokens_to_ids('[E2]')
+                e1_idx = (input_ids[0] == e1_token_id).nonzero(as_tuple=False)[0, 0]
+                e2_idx = (input_ids[0] == e2_token_id).nonzero(as_tuple=False)[0, 0]
+
+                _, logits = self.model(input_ids, attention_mask, torch.tensor([e1_idx]).to(self.device), torch.tensor([e2_idx]).to(self.device))
+                probs = torch.softmax(logits, dim=-1)
+                pred = torch.argmax(logits, dim=-1).item()
+                confidence = probs[0][pred].item()
+
+                binary_pred = 1  # R-BERT directly predicts relation type
+                binary_confidence = confidence
+                relation_pred = pred
+                relation_confidence = confidence
+            else:
+                _, binary_logits, relation_logits = self.model(input_ids, attention_mask)
+
+                binary_probs = torch.softmax(binary_logits, dim=-1)
+                binary_pred = torch.argmax(binary_logits, dim=-1).item()
+                binary_confidence = binary_probs[0][binary_pred].item()
+
+                relation_probs = torch.softmax(relation_logits, dim=-1)
+                relation_pred = torch.argmax(relation_logits, dim=-1).item()
+                relation_confidence = relation_probs[0][relation_pred].item()
+
             relation_type = self.id2relation.get(relation_pred, "未知")
         
         return {
@@ -126,9 +160,9 @@ class RelationPredictor:
 
 class RelationExtractor:
     """关系抽取器类 - 高级接口"""
-    
-    def __init__(self, model_path: str):
-        self.predictor = RelationPredictor(model_path)
+
+    def __init__(self, model_path: str, model_type: str = 'bert'):
+        self.predictor = RelationPredictor(model_path, model_type=model_type)
     
     def extract_relations(self, text: str, entities: List[Dict]) -> List[Dict]:
         """抽取文本中的关系"""
