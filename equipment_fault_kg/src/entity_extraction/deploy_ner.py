@@ -144,7 +144,8 @@ class NERPredictor:
             if label.startswith('B-'):
                 # 开始新实体
                 if current_entity:
-                    entities.append(current_entity)
+                    if self._is_valid_entity(current_entity['name']):
+                        entities.append(current_entity)
                 
                 entity_type = label[2:]  # 去掉B-前缀
                 current_entity = {
@@ -172,7 +173,7 @@ class NERPredictor:
                     current_entity = None
         
         # 添加最后一个实体
-        if current_entity:
+        if current_entity and self._is_valid_entity(current_entity['name']):
             entities.append(current_entity)
         
         return entities
