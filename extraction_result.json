@@ -1,0 +1,30 @@
+[
+  {
+    "text": "主轴故障导致异常振动，需要进行维修。",
+    "entities": [
+      {
+        "name": "主轴",
+        "type": "EQUIPMENT",
+        "start": 0,
+        "end": 2,
+        "confidence": 0.9
+      },
+      {
+        "name": "故障",
+        "type": "FAULT",
+        "start": 2,
+        "end": 4,
+        "confidence": 0.85
+      },
+      {
+        "name": "振动",
+        "type": "SYMPTOM",
+        "start": 8,
+        "end": 10,
+        "confidence": 0.8
+      }
+    ],
+    "relations": [],
+    "spo_list": []
+  }
+]
