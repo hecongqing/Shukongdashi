@@ -88,7 +88,8 @@ class NERDataset(Dataset):
             # 填充
             padding_length = self.max_length - len(tokens)
             tokens.extend(['[PAD]'] * padding_length)
-            label_ids.extend([self.label2id['O']] * padding_length)
+            # 对于填充位置使用特殊忽略标签 -100，避免在损失计算中影响 "O" 标签
+            label_ids.extend([-100] * padding_length)
         
         # 转换为ID
         input_ids = self.tokenizer.convert_tokens_to_ids(tokens)
@@ -97,6 +98,7 @@ class NERDataset(Dataset):
         return {
             'input_ids': torch.tensor(input_ids, dtype=torch.long),
             'attention_mask': torch.tensor(attention_mask, dtype=torch.long),
+            # 使用长整型保持与 CrossEntropyLoss 兼容，同时保留 -100 作为 ignore_index
             'labels': torch.tensor(label_ids, dtype=torch.long)
         }
 
@@ -117,7 +119,8 @@ class NERModel(nn.Module):
         
         loss = None
         if labels is not None:
-            loss_fct = nn.CrossEntropyLoss(ignore_index=0)  # 忽略PAD标签
+            # 使用 -100 作为忽略索引（与上方填充标签一致），避免将 'O' 标签置为忽略
+            loss_fct = nn.CrossEntropyLoss(ignore_index=-100)
             loss = loss_fct(logits.view(-1, logits.size(-1)), labels.view(-1))
         
         return loss, logits
