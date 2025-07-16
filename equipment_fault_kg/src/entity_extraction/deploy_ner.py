@@ -6,7 +6,9 @@ import logging
 from typing import List, Dict, Tuple
 import re
 import os
+import numpy as np
 
+# NERModel supports optional CRF layer
 from .train_ner import NERModel
 
 logging.basicConfig(level=logging.INFO)
@@ -46,8 +48,11 @@ class NERPredictor:
             # 获取标签数量
             num_labels = len(self.label2id)
             
+            # 是否使用 CRF
+            use_crf = checkpoint.get('use_crf', False)
+
             # 加载模型
-            self.model = NERModel('bert-base-chinese', num_labels)
+            self.model = NERModel('bert-base-chinese', num_labels, use_crf=use_crf)
             self.model.load_state_dict(checkpoint['model_state_dict'])
             self.model.to(self.device)
             self.model.eval()
@@ -111,10 +116,19 @@ class NERPredictor:
         # 预测
         with torch.no_grad():
             _, logits = self.model(input_ids, attention_mask)
-            predictions = torch.argmax(logits, dim=-1)
+
+            # 根据是否使用 CRF 进行解码
+            if getattr(self.model, 'use_crf', False):
+                mask = attention_mask.bool()
+                batch_paths = self.model.crf.decode(logits, mask=mask)
+                # decode 返回 list[list[int]]
+                pred_labels = np.array(batch_paths[0])
+            else:
+                predictions = torch.argmax(logits, dim=-1)
+                pred_labels = predictions[0].cpu().numpy()
         
         # 解码预测结果
-        pred_labels = predictions[0].cpu().numpy()
+        pred_labels = pred_labels
         
         # 提取实体
         entities = self._extract_entities(text, pred_labels, char_to_token)
@@ -131,8 +145,8 @@ class NERPredictor:
             if i >= len(char_to_token):
                 continue
             
-            # 获取字符对应的token位置（跳过[CLS]，所以+1）
-            token_idx = char_to_token[i] + 1  # +1 是因为第一个token是[CLS]
+            # 获取字符对应的token位置（char_to_token 已经将 '[CLS]' 计算在内，无需再偏移）
+            token_idx = char_to_token[i]
             
             # 检查token索引范围
             if token_idx >= len(pred_labels):
@@ -185,6 +199,28 @@ class NERPredictor:
             entities = self.predict(text)
             results.append(entities)
         return results
+
+    # ------------------------------------------------------------------
+    # Utility: 判断实体文本是否有效
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _is_valid_entity(name: str) -> bool:
+        """简单启发式检查：过滤掉只包含标点、空白或单独数字的实体"""
+        if not name or not name.strip():
+            return False
+
+        name = name.strip()
+
+        # 单字符且非字母数字汉字时认为无效
+        if len(name) == 1 and (not name.isalnum() and not re.match(r"[\u4e00-\u9fff]", name)):
+            return False
+
+        punctuation_set = set("，。？！；：、（）《》”“‘’[]{}-—…·、")
+        if all((ch in punctuation_set or ch.isspace()) for ch in name):
+            return False
+
+        return True
 
 class EntityExtractor:
     """实体抽取器类 - 高级接口"""
@@ -319,7 +355,8 @@ def create_ner_api():
 
 if __name__ == "__main__":
     # 测试预测器
-    sample_text = "故障现象:车速到100迈以上发动机盖后部随着车速抖动。故障原因简要分析:经技术人员试车；怀疑发动机盖锁或发动机盖铰链松旷。"
+    # 示例句子（来自最初问题）
+    sample_text = "伺服电机运行异常，维修人员使用万用表检测电路故障。"
     
     print(f"测试文本: {sample_text}")
     print(f"文本长度: {len(sample_text)} 字符")

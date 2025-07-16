@@ -305,6 +305,7 @@ def train_ner_model(data_path: str, output_dir: str = './models'):
     processor = EntityDataProcessor()
     raw_data = processor.load_data(data_path)
     ner_data = processor.convert_to_ner_format(raw_data)
+    ner_data = processor.clean_ner_data(ner_data)
     
     # 保存处理后的数据
     processor.save_ner_data(ner_data, os.path.join(output_dir, 'ner_data.json'))
@@ -315,7 +316,7 @@ def train_ner_model(data_path: str, output_dir: str = './models'):
         json.dump(stats, f, ensure_ascii=False, indent=2)
     
     # 训练模型
-    trainer = NERTrainer()
+    trainer = NERTrainer(use_crf=True)
     train_dataset, val_dataset = trainer.prepare_data(ner_data)
     
     # 开始训练
