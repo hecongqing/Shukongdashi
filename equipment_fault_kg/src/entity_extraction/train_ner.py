@@ -12,6 +12,12 @@ import logging
 from tqdm import tqdm
 import pickle
 
+# Optional CRF layer (requires torchcrf package)
+try:
+    from torchcrf import CRF
+except ImportError:
+    CRF = None  # 将在模型初始化时检查
+
 from .data_processor import EntityDataProcessor
 
 logging.basicConfig(level=logging.INFO)
@@ -103,36 +109,62 @@ class NERDataset(Dataset):
         }
 
 class NERModel(nn.Module):
-    """NER模型类"""
-    
-    def __init__(self, bert_model_name: str, num_labels: int, dropout: float = 0.1):
+    """NER模型类，支持可选 CRF 层以捕获标签依赖关系"""
+
+    def __init__(self, bert_model_name: str, num_labels: int, dropout: float = 0.1, use_crf: bool = False):
         super(NERModel, self).__init__()
+
+        if use_crf and CRF is None:
+            raise ImportError(
+                "Requested use_crf=True but torchcrf is not installed. Please `pip install torchcrf`."
+            )
+
+        self.use_crf = use_crf and (CRF is not None)
+
         self.bert = BertModel.from_pretrained(bert_model_name)
         self.dropout = nn.Dropout(dropout)
         self.classifier = nn.Linear(self.bert.config.hidden_size, num_labels)
-        
+
+        # CRF layer（batch_first=True 以保持与 (batch, seq_len, feat) 对齐）
+        if self.use_crf:
+            self.crf = CRF(num_labels, batch_first=True)
+        else:
+            self.crf = None
+
     def forward(self, input_ids, attention_mask, labels=None):
+        """如果使用 CRF，则 logits 表示 emission scores。"""
+
         outputs = self.bert(input_ids=input_ids, attention_mask=attention_mask)
-        sequence_output = outputs[0]
-        sequence_output = self.dropout(sequence_output)
-        logits = self.classifier(sequence_output)
-        
+        sequence_output = self.dropout(outputs[0])
+        emissions = self.classifier(sequence_output)  # (batch, seq, num_labels)
+
         loss = None
-        if labels is not None:
-            # 使用 -100 作为忽略索引（与上方填充标签一致），避免将 'O' 标签置为忽略
-            loss_fct = nn.CrossEntropyLoss(ignore_index=-100)
-            loss = loss_fct(logits.view(-1, logits.size(-1)), labels.view(-1))
-        
+
+        if self.use_crf:
+            # mask 需要 byte/bool 类型。
+            mask = attention_mask.bool()
+            if labels is not None:
+                # torchcrf 返回对数似然，取负数作为损失
+                loss = -self.crf(emissions, labels, mask=mask, reduction='mean')
+            # logits 与非CRF保持兼容，返回emissions供外部decode使用
+            logits = emissions
+        else:
+            logits = emissions
+            if labels is not None:
+                loss_fct = nn.CrossEntropyLoss(ignore_index=-100)
+                loss = loss_fct(logits.view(-1, logits.size(-1)), labels.view(-1))
+
         return loss, logits
 
 class NERTrainer:
     """NER训练器类"""
     
-    def __init__(self, model_name: str = 'bert-base-chinese', device: str = None):
+    def __init__(self, model_name: str = 'bert-base-chinese', device: str = None, use_crf: bool = False):
         self.model_name = model_name
         self.device = device if device else ('cuda' if torch.cuda.is_available() else 'cpu')
         self.tokenizer = BertTokenizer.from_pretrained(model_name)
         self.model = None
+        self.use_crf = use_crf
         
     def prepare_data(self, data: List[Dict], test_size: float = 0.2):
         """准备训练数据"""
@@ -161,7 +193,7 @@ class NERTrainer:
         
         # 初始化模型
         num_labels = len(train_dataset.label2id)
-        self.model = NERModel(self.model_name, num_labels)
+        self.model = NERModel(self.model_name, num_labels, use_crf=self.use_crf)
         self.model.to(self.device)
         
         # 优化器和调度器
@@ -219,12 +251,23 @@ class NERTrainer:
                 labels = batch['labels'].to(self.device)
                 
                 _, logits = self.model(input_ids, attention_mask)
-                preds = torch.argmax(logits, dim=-1)
+
+                # 根据是否使用 CRF 进行解码
+                if self.use_crf:
+                    mask = attention_mask.bool()
+                    batch_preds = self.model.crf.decode(logits, mask=mask)
+                    # 填充到张量方便后续处理
+                    preds = torch.zeros_like(labels)
+                    for b_idx, seq in enumerate(batch_preds):
+                        seq_len = len(seq)
+                        preds[b_idx, :seq_len] = torch.tensor(seq, device=self.device)
+                else:
+                    preds = torch.argmax(logits, dim=-1)
                 
                 # 收集非PAD位置的预测和标签
                 for i in range(input_ids.size(0)):
                     for j in range(input_ids.size(1)):
-                        if attention_mask[i][j] == 1 and labels[i][j] != 0:  # 非PAD且非O标签
+                        if attention_mask[i][j] == 1 and labels[i][j] != -100:  # 忽略填充位置
                             all_preds.append(preds[i][j].item())
                             all_labels.append(labels[i][j].item())
         
@@ -237,7 +280,8 @@ class NERTrainer:
         torch.save({
             'model_state_dict': self.model.state_dict(),
             'tokenizer': self.tokenizer,
-            'label2id': self.model.classifier.out_features
+            'label2id': self.model.classifier.out_features,
+            'use_crf': self.use_crf
         }, model_path)
         logger.info(f"Model saved to {model_path}")
     
@@ -245,7 +289,8 @@ class NERTrainer:
         """加载模型"""
         checkpoint = torch.load(model_path, map_location=self.device)
         num_labels = checkpoint['label2id']
-        self.model = NERModel(self.model_name, num_labels)
+        use_crf = checkpoint.get('use_crf', False)
+        self.model = NERModel(self.model_name, num_labels, use_crf=use_crf)
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.model.to(self.device)
         logger.info(f"Model loaded from {model_path}")
