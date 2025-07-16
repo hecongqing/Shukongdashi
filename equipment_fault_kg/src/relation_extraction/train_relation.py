@@ -110,23 +110,37 @@ class RelationModel(nn.Module):
         return loss, binary_logits, relation_logits
 
 class RelationTrainer:
-    """关系抽取训练器类"""
-    
-    def __init__(self, model_name: str = 'bert-base-chinese', device: str = None):
+    """关系抽取训练器类
+
+    Args:
+        model_type: 'bert' 使用原二分类 + 关系分类头
+                    'rbert' 使用 R-BERT（三向量拼接）
+    """
+
+    def __init__(self, model_name: str = 'bert-base-chinese', device: str = None,
+                 model_type: str = 'bert'):
         self.model_name = model_name
         self.device = device if device else ('cuda' if torch.cuda.is_available() else 'cpu')
+        self.model_type = model_type.lower()
+
+        # Tokenizer will be updated later for rbert to include special tokens
         self.tokenizer = BertTokenizer.from_pretrained(model_name)
         self.model = None
         
     def prepare_data(self, data: List[Dict], test_size: float = 0.2):
         """准备训练数据"""
-        # 分割训练集和验证集
         train_data, val_data = train_test_split(data, test_size=test_size, random_state=42)
-        
-        # 创建数据集
-        train_dataset = RelationDataset(train_data, self.tokenizer)
-        val_dataset = RelationDataset(val_data, self.tokenizer)
-        
+
+        if self.model_type == 'rbert':
+            from .rbert_dataset import RbertRelationDataset  # lazy import
+            train_dataset = RbertRelationDataset(train_data, self.tokenizer)
+            val_dataset = RbertRelationDataset(val_data, self.tokenizer)
+            # Tokenizer may have been expanded with special tokens
+            self.tokenizer = train_dataset.tokenizer  # keep updated tokenizer
+        else:
+            train_dataset = RelationDataset(train_data, self.tokenizer)
+            val_dataset = RelationDataset(val_data, self.tokenizer)
+
         return train_dataset, val_dataset
     
     def train(self, train_dataset, val_dataset, 
@@ -140,7 +154,14 @@ class RelationTrainer:
         
         # 初始化模型
         num_relations = len(train_dataset.relation2id)
-        self.model = RelationModel(self.model_name, num_relations)
+
+        if self.model_type == 'rbert':
+            from .rbert_model import RbertRelationModel
+            self.model = RbertRelationModel(self.model_name, num_relations)
+            # Resize token embeddings because tokenizer may have new tokens
+            self.model.bert.resize_token_embeddings(len(self.tokenizer))
+        else:
+            self.model = RelationModel(self.model_name, num_relations)
         self.model.to(self.device)
         
         # 优化器和调度器
@@ -161,11 +182,20 @@ class RelationTrainer:
             for batch in tqdm(train_loader, desc="Training"):
                 input_ids = batch['input_ids'].to(self.device)
                 attention_mask = batch['attention_mask'].to(self.device)
-                labels = batch['labels'].to(self.device)
-                relation_ids = batch['relation_ids'].to(self.device)
-                
-                optimizer.zero_grad()
-                loss, _, _ = self.model(input_ids, attention_mask, labels, relation_ids)
+
+                if self.model_type == 'rbert':
+                    e1_idx = batch['e1_idx'].to(self.device)
+                    e2_idx = batch['e2_idx'].to(self.device)
+                    relation_ids = batch['relation_ids'].to(self.device)
+
+                    optimizer.zero_grad()
+                    loss, _ = self.model(input_ids, attention_mask, e1_idx, e2_idx, relation_ids)
+                else:
+                    labels = batch['labels'].to(self.device)
+                    relation_ids = batch['relation_ids'].to(self.device)
+
+                    optimizer.zero_grad()
+                    loss, _, _ = self.model(input_ids, attention_mask, labels, relation_ids)
                 loss.backward()
                 optimizer.step()
                 scheduler.step()
@@ -198,35 +228,51 @@ class RelationTrainer:
             for batch in data_loader:
                 input_ids = batch['input_ids'].to(self.device)
                 attention_mask = batch['attention_mask'].to(self.device)
-                labels = batch['labels'].to(self.device)
-                relation_ids = batch['relation_ids'].to(self.device)
-                
-                _, binary_logits, relation_logits = self.model(input_ids, attention_mask)
-                
-                # 二分类预测
-                binary_preds = torch.argmax(binary_logits, dim=-1)
-                all_preds.extend(binary_preds.cpu().numpy())
-                all_labels.extend(labels.cpu().numpy())
-                
-                # 关系分类预测（仅对正样本）
-                relation_preds = torch.argmax(relation_logits, dim=-1)
-                for i, label in enumerate(labels):
-                    if label == 1:  # 正样本
-                        all_relation_preds.append(relation_preds[i].cpu().numpy())
-                        all_relation_labels.append(relation_ids[i].cpu().numpy())
+
+                if self.model_type == 'rbert':
+                    e1_idx = batch['e1_idx'].to(self.device)
+                    e2_idx = batch['e2_idx'].to(self.device)
+                    relation_ids = batch['relation_ids'].to(self.device)
+
+                    _, logits = self.model(input_ids, attention_mask, e1_idx, e2_idx)
+
+                    preds = torch.argmax(logits, dim=-1)
+                    all_preds.extend(preds.cpu().numpy())
+                    all_labels.extend(relation_ids.cpu().numpy())
+                else:
+                    labels = batch['labels'].to(self.device)
+                    relation_ids = batch['relation_ids'].to(self.device)
+
+                    _, binary_logits, relation_logits = self.model(input_ids, attention_mask)
+
+                    # 二分类预测
+                    binary_preds = torch.argmax(binary_logits, dim=-1)
+                    all_preds.extend(binary_preds.cpu().numpy())
+                    all_labels.extend(labels.cpu().numpy())
+
+                    # 关系分类预测（仅对正样本）
+                    relation_preds = torch.argmax(relation_logits, dim=-1)
+                    for i, label in enumerate(labels):
+                        if label == 1:  # 正样本
+                            all_relation_preds.append(relation_preds[i].cpu().numpy())
+                            all_relation_labels.append(relation_ids[i].cpu().numpy())
         
-        # 计算F1分数
-        f1 = f1_score(all_labels, all_preds, average='weighted')
-        
-        # 打印详细评估报告
-        logger.info("Binary Classification Report:")
-        logger.info(classification_report(all_labels, all_preds))
-        
-        if all_relation_preds:
-            relation_f1 = f1_score(all_relation_labels, all_relation_preds, average='weighted')
-            logger.info(f"Relation Classification F1: {relation_f1:.4f}")
-        
-        return f1
+        # 计算评估指标
+        if self.model_type == 'rbert':
+            f1 = f1_score(all_labels, all_preds, average='weighted')
+            logger.info(classification_report(all_labels, all_preds))
+            return f1
+        else:
+            f1 = f1_score(all_labels, all_preds, average='weighted')
+
+            logger.info("Binary Classification Report:")
+            logger.info(classification_report(all_labels, all_preds))
+
+            if all_relation_preds:
+                relation_f1 = f1_score(all_relation_labels, all_relation_preds, average='weighted')
+                logger.info(f"Relation Classification F1: {relation_f1:.4f}")
+
+            return f1
     
     def save_model(self, model_path: str):
         """保存模型"""
@@ -241,7 +287,14 @@ class RelationTrainer:
         """加载模型"""
         checkpoint = torch.load(model_path, map_location=self.device)
         num_relations = checkpoint['relation2id']
-        self.model = RelationModel(self.model_name, num_relations)
+
+        if self.model_type == 'rbert':
+            from .rbert_model import RbertRelationModel
+            self.model = RbertRelationModel(self.model_name, num_relations)
+            # Ensure token embeddings resized as during training
+            self.model.bert.resize_token_embeddings(len(self.tokenizer))
+        else:
+            self.model = RelationModel(self.model_name, num_relations)
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.model.to(self.device)
         logger.info(f"Model loaded from {model_path}")
