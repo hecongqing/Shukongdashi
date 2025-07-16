@@ -161,9 +161,56 @@ class EntityDataProcessor:
         
         logger.info(f"Converted {len(ner_data)} samples to NER format")
         return ner_data
-    
+
+    # ------------------------------------------------------------------
+    # 额外工具：清洗和验证 NER 标注
+    # ------------------------------------------------------------------
+
+    def clean_ner_data(self, data: List[Dict]) -> List[Dict]:
+        """验证并清洗 BIO 序列，确保长度一致且 I- 标签前面有相同类型的 B-/I-。
+
+        返回清洗后的数据列表，同时记录纠正次数以便调试。
+        """
+        fixed_len_mismatch = 0
+        fixed_bio_inconsistency = 0
+
+        cleaned = []
+
+        for sample in data:
+            text = sample.get('text', '')
+            labels: List[str] = sample.get('labels', [])
+
+            # 1. 长度对齐
+            if len(labels) != len(text):
+                fixed_len_mismatch += 1
+                # 截断或填充到文本长度，其余用 'O'
+                if len(labels) > len(text):
+                    labels = labels[:len(text)]
+                else:
+                    labels.extend(['O'] * (len(text) - len(labels)))
+
+            # 2. BIO 合规：I-不能出现在序列开始，且前一个必须同类型实体
+            prev_label = 'O'
+            for idx, lab in enumerate(labels):
+                if lab.startswith('I-'):
+                    if prev_label == 'O' or (prev_label[2:] != lab[2:]):
+                        # 修正为 B-
+                        labels[idx] = 'B-' + lab[2:]
+                        fixed_bio_inconsistency += 1
+                prev_label = labels[idx]
+
+            # 更新 sample
+            sample['labels'] = labels
+            cleaned.append(sample)
+
+        logger.info(
+            f"NER data cleaned: fixed length mismatches={fixed_len_mismatch}, BIO inconsistencies={fixed_bio_inconsistency}"
+        )
+
+        return cleaned
+
     def save_ner_data(self, data: List[Dict], output_path: str):
-        """保存NER格式数据"""
+        """保存清洗后的 NER 数据到指定路径"""
         with open(output_path, 'w', encoding='utf-8') as f:
             for sample in data:
                 f.write(json.dumps(sample, ensure_ascii=False) + '\n')
