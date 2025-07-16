@@ -26,17 +26,13 @@ class EquipmentNERDataset(Dataset):
         self.tokenizer = tokenizer
         self.max_length = max_length
         
-        # 实体标签映射
+        # 实体标签映射 - 统一使用4类标签
         self.label2id = {
             'O': 0,
-            'B-Equipment': 1, 'I-Equipment': 2,
-            'B-Component': 3, 'I-Component': 4,
-            'B-Fault': 5, 'I-Fault': 6,
-            'B-Cause': 7, 'I-Cause': 8,
-            'B-Solution': 9, 'I-Solution': 10,
-            'B-Symptom': 11, 'I-Symptom': 12,
-            'B-Material': 13, 'I-Material': 14,
-            'B-Tool': 15, 'I-Tool': 16
+            'B-COMPONENT': 1, 'I-COMPONENT': 2,
+            'B-PERFORMANCE': 3, 'I-PERFORMANCE': 4,
+            'B-FAULT_STATE': 5, 'I-FAULT_STATE': 6,
+            'B-DETECTION_TOOL': 7, 'I-DETECTION_TOOL': 8
         }
         self.id2label = {v: k for k, v in self.label2id.items()}
     
@@ -289,7 +285,29 @@ class NERModel:
         if current_entity:
             entities.append(current_entity)
         
-        return entities
+        # 后处理：过滤明显错误的实体
+        filtered_entities = []
+        for entity in entities:
+            # 过滤标点符号实体
+            if entity['text'] in ['。', '，', '；', '：', '！', '？', '、', '（', '）', '【', '】']:
+                continue
+            
+            # 过滤单字符动词
+            if len(entity['text']) == 1 and entity['text'] in ['使', '用', '检', '测', '修', '维']:
+                continue
+            
+            # 过滤包含标点符号的实体（保留实体部分）
+            if any(punct in entity['text'] for punct in ['。', '，', '；', '：', '！', '？', '、']):
+                # 移除末尾的标点符号
+                clean_text = entity['text'].rstrip('。，；：！？、')
+                if clean_text and clean_text != entity['text']:
+                    entity['text'] = clean_text
+            
+            # 过滤空实体
+            if entity['text'].strip():
+                filtered_entities.append(entity)
+        
+        return filtered_entities
     
     def save_model(self, path: str):
         """保存模型"""
@@ -303,7 +321,7 @@ class NERModel:
             logger.warning(f"模型文件不存在: {path}")
             return
         
-        num_labels = 17  # 根据标签数量设置
+        num_labels = 9  # 根据标签数量设置 (4类实体 * 2 + 1个O标签)
         self.model = EquipmentNERModel(self.model_name, num_labels).to(self.device)
         self.model.load_state_dict(torch.load(path, map_location=self.device))
         logger.info(f"模型已从 {path} 加载")
