@@ -1,0 +1,5 @@
+# 简洁版KGQA框架依赖
+# Easy KGQA Framework Dependencies
+
+# 无需额外依赖，仅使用Python标准库
+# No additional dependencies required, only using Python standard library
