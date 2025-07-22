@@ -20,6 +20,7 @@ from Shukongdashi.demo import question_pa
 from Shukongdashi.demo import question_buquan
 from Shukongdashi.demo import question_wenda
 from . import view
+from Shukongdashi import api_views
 urlpatterns = [
     url(r'^$', view.test),
     url(r'^qa', question_zhenduan.question_answering),
@@ -27,4 +28,7 @@ urlpatterns = [
     url(r'^save', question_baocun.question_baocun),
     url(r'^buquan', question_buquan.question_buquan),
     url(r'^wenda', question_wenda.question_wenda),
+    url(r'^api/entities$', api_views.entities_endpoint),
+    url(r'^api/relations$', api_views.relations_endpoint),
+    url(r'^api/qa$', api_views.qa_endpoint),
 ]
