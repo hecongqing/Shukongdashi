@@ -34,30 +34,21 @@ class EntityRecognizer:
         
         # 实体类型映射（将NER服务的实体类型映射到故障类型）
         self.entity_type_mapping = {
-            # 设备部件类
-            'EQUIPMENT': FaultType.LOCATION,
+            # 部件单元 -> 部位
+            '部件单元': FaultType.LOCATION,
             'COMPONENT': FaultType.LOCATION,
-            'PART': FaultType.LOCATION,
-            'DEVICE': FaultType.LOCATION,
             
-            # 故障现象类
-            'PHENOMENON': FaultType.PHENOMENON,
-            'SYMPTOM': FaultType.PHENOMENON,
-            'ERROR': FaultType.PHENOMENON,
-            'FAULT': FaultType.PHENOMENON,
+            # 性能表征 -> 现象
+            '性能表征': FaultType.PHENOMENON,
+            'PERFORMANCE': FaultType.PHENOMENON,
             
-            # 操作类
-            'OPERATION': FaultType.OPERATION,
-            'ACTION': FaultType.OPERATION,
+            # 故障状态 -> 现象
+            '故障状态': FaultType.PHENOMENON,
+            'FAULT_STATE': FaultType.PHENOMENON,
             
-            # 报警类
-            'ALARM': FaultType.ALARM,
-            'WARNING': FaultType.ALARM,
-            'CODE': FaultType.ALARM,
-            
-            # 原因类
-            'CAUSE': FaultType.CAUSE,
-            'REASON': FaultType.CAUSE
+            # 检测工具 -> 部位（工具也是一种设备部位）
+            '检测工具': FaultType.LOCATION,
+            'DETECTION_TOOL': FaultType.LOCATION
         }
         
         # 规则匹配的回退模式（与原有逻辑保持一致）
@@ -143,12 +134,13 @@ class EntityRecognizer:
             elements = []
             
             # 解析NER服务返回的结果
+            # 格式: {'entities': [{'end_pos': 7, 'name': '刀链', 'start_pos': 5, 'type': '部件单元'},...]}
             if 'entities' in result:
                 for entity in result['entities']:
-                    entity_text = entity.get('text', '')
-                    entity_type = entity.get('label', '').upper()
-                    start_pos = entity.get('start', 0)
-                    confidence = entity.get('confidence', 0.8)
+                    entity_text = entity.get('name', '')  # 实体名称
+                    entity_type = entity.get('type', '')   # 实体类型（中文）
+                    start_pos = entity.get('start_pos', 0) # 开始位置
+                    confidence = 0.9  # NER服务的置信度较高
                     
                     # 映射实体类型到故障类型
                     fault_type = self.entity_type_mapping.get(entity_type, FaultType.PHENOMENON)
