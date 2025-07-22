@@ -15,6 +15,7 @@ class QueryIn(BaseModel):
 class QueryOut(BaseModel):
     query_parse: Dict[str, Any]
     answers: Any
+    related_phenomena: Any
 
 @app.post("/qa", response_model=QueryOut)
 def qa_endpoint(in_payload: QueryIn):

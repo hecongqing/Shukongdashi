@@ -27,11 +27,16 @@ def _simple_tokenize(text: str) -> List[str]:
 def _fallback_extract(tokens: List[str]) -> List[Tuple[str, str]]:
     """A very naive rule-based extractor used when the heavyweight model is unavailable."""
     # For demo purpose, we mark any token that contains a digit as a fault code,
-    # otherwise we treat tokens longer than 4 as phenomenon.
+    # Chinese manufacturing domain often embeds parts like "电机", "模块", "组件" etc.
+    # We use a small keyword list as an illustrative heuristic.
+    PART_HINTS = ["电机", "轴", "模块", "电源", "油泵", "线路", "电路", "刀库", "伺服", "驱动", "主轴", "继电器"]
+
     res: List[Tuple[str, str]] = []
     for tok in tokens:
         if re.search(r"\d", tok):
             res.append((tok, "FaultCode"))
+        elif any(h in tok for h in PART_HINTS):
+            res.append((tok, "FaultPart"))
         else:
             res.append((tok, "Phenomenon"))
     return res
@@ -90,6 +95,7 @@ def parse_fault_text(text: str) -> Dict[str, List[str]]:
 
     operations: List[str] = []
     phenomena: List[str] = []
+    parts: List[str] = []
     fault_codes: List[str] = []
 
     # 3) entity extraction per sentence
@@ -98,6 +104,8 @@ def parse_fault_text(text: str) -> Dict[str, List[str]]:
         for ent, ent_label in ents:
             if ent_label == "FaultCode" or "故障代码" in ent_label:
                 fault_codes.append(ent)
+            elif ent_label == "FaultPart" or "故障部位" in ent_label:
+                parts.append(ent)
             elif label == "用户操作" or label == "操作" or label == "操作步骤":
                 operations.append(ent)
             else:
@@ -107,4 +115,5 @@ def parse_fault_text(text: str) -> Dict[str, List[str]]:
         "operations": list(set(operations)),
         "phenomena": list(set(phenomena)),
         "fault_codes": list(set(fault_codes)),
+        "parts": list(set(parts)),
     }

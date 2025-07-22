@@ -1,6 +1,29 @@
 from typing import Dict, List
 
-from py2neo import Graph
+# ------------------------------------------------------------------
+# We want the demo to run even without Neo4j / py2neo installed. If import
+# fails we create a *very* small stub that mimics the handful of APIs we use
+# so that the rest of the code can still execute (albeit returning empty
+# results).
+# ------------------------------------------------------------------
+try:
+    from py2neo import Graph  # type: ignore
+except ModuleNotFoundError:  # pragma: no cover – demo convenience
+    class _DummyCursor(list):
+        def data(self):  # py2neo Cursor.data() returns list[dict]
+            return []
+
+        def evaluate(self):
+            return None
+
+    class Graph:  # type: ignore
+        def __init__(self, *_, **__):
+            pass
+
+        def run(self, *_, **__):
+            return _DummyCursor()
+
+    print("[kgqa] py2neo not available – running in stub mode. All KG queries will return empty results.")
 
 from .extraction import parse_fault_text
 
@@ -59,12 +82,74 @@ class KnowledgeGraphQA:
             res.extend(data)
         return res
 
+    # Helper to retrieve additional phenomena that share the same root cause – this is used
+    # for "unrevealed" fault inference so that the frontend can ask the user for
+    # confirmation and thus improve reliability.
+    def _infer_related_phenomena(self, causes: List[str], already_found: List[str]):
+        """Given a list of cause names, return a *deduplicated* list of other phenomena
+        that are linked to **any** of the causes while excluding the ones we already
+        know are present in the user description.
+
+        Cypher pattern utilised::
+
+            (c:Cause)-[:CY]->(p:Phenomenon)
+        """
+        if not causes:
+            return []
+
+        # gather related phenomena for every cause individually – this keeps Cypher
+        # simple and avoids injection problems
+        related: List[str] = []
+        for cause in causes:
+            rows = self.graph.run(
+                """
+                MATCH (c:Cause {title: $cause})-[:CY]->(p:Phenomenon)
+                RETURN p.title AS phenomenon
+                """,
+                cause=cause,
+            ).data()
+            related.extend([r["phenomenon"] for r in rows])
+
+        # remove already reported ones and keep order
+        return [p for p in _deduplicate_keep_order(related) if p not in already_found]
+
+    # Fuzzy search as a very light-weight synonym / alias mechanism ----------------
+    def _fuzzy_match_phenomenon(self, raw: str) -> str:
+        """Try to map an *input* phenomenon string to the canonical one in KG.
+
+        If an exact node title exists we simply return it. Otherwise we do a
+        case-insensitive CONTAINS match and return the *first* hit. In a more
+        sophisticated system you would use embedding similarity or a dedicated
+        alias table; for a demo substring match works reasonably well.
+        """
+        # exact
+        hit = self.graph.run("MATCH (p:Phenomenon {title: $t}) RETURN p.title AS t", t=raw).evaluate()
+        if hit:
+            return hit
+
+        # substring – note LIMIT 1 for performance
+        hit = self.graph.run(
+            """
+            MATCH (p:Phenomenon)
+            WHERE toLower(p.title) CONTAINS toLower($t)
+            RETURN p.title AS t LIMIT 1
+            """,
+            t=raw,
+        ).evaluate()
+        return hit or raw  # fall back to raw string if nothing helps
+
     # ------------------------------------------------------------------
     # Public interface
     # ------------------------------------------------------------------
     def answer(self, raw_question: str) -> Dict:
         """Main entry point used by external callers."""
         parsed = parse_fault_text(raw_question)
+
+        # Normalise user-supplied phenomena so that we can have a higher hit-rate
+        if parsed["phenomena"]:
+            parsed["phenomena"] = _deduplicate_keep_order([
+                self._fuzzy_match_phenomenon(p) for p in parsed["phenomena"]
+            ])
 
         aggregates: List[Dict] = []
 
@@ -76,7 +161,11 @@ class KnowledgeGraphQA:
         if not aggregates and parsed["phenomena"]:
             aggregates.extend(self._search_by_phenomenon(parsed["phenomena"]))
 
-        # NOTE: For a demo we skip operation-based reasoning.
+        # ------------------------------------------------------------------
+        # Inference of related / hidden phenomena
+        # ------------------------------------------------------------------
+        causes_in_results = [item.get("cause") for item in aggregates if item.get("cause")]
+        related_ph = self._infer_related_phenomena(causes_in_results, parsed["phenomena"])
 
         # Post-processing – flatten duplicates
         unique_seen = set()
@@ -91,4 +180,5 @@ class KnowledgeGraphQA:
         return {
             "query_parse": parsed,
             "answers": cleaned or "未在图谱中检索到直接答案，请尝试修改描述或在线检索。",
+            "related_phenomena": related_ph,
         }
