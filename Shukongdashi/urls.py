@@ -20,11 +20,22 @@ from Shukongdashi.demo import question_pa
 from Shukongdashi.demo import question_buquan
 from Shukongdashi.demo import question_wenda
 from . import view
+from . import kgqa_views
+
 urlpatterns = [
     url(r'^$', view.test),
+    
+    # 原有的接口（保持兼容性）
     url(r'^qa', question_zhenduan.question_answering),
     url(r'^pa', question_pa.main),
     url(r'^save', question_baocun.question_baocun),
     url(r'^buquan', question_buquan.question_buquan),
     url(r'^wenda', question_wenda.question_wenda),
+    
+    # 新的KGQA框架接口
+    url(r'^kgqa/diagnosis$', kgqa_views.kgqa_diagnosis),      # 故障诊断
+    url(r'^kgqa/qa$', kgqa_views.kgqa_question_answer),      # 智能问答
+    url(r'^kgqa/feedback$', kgqa_views.kgqa_feedback),       # 用户反馈
+    url(r'^kgqa/status$', kgqa_views.kgqa_status),           # 系统状态
+    url(r'^kgqa/autocomplete$', kgqa_views.kgqa_autocomplete), # 自动补全
 ]
