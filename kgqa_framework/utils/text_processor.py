@@ -6,41 +6,64 @@
 import re
 import jieba
 import jieba.posseg as pseg
-from typing import List, Tuple, Dict, Set
+from typing import List, Tuple, Dict, Set, Optional
 import json
 import os
 from ..models.entities import FaultElement, FaultType
+from .entity_recognizer import EntityRecognizer
 
 
 class TextProcessor:
     """文本处理器"""
     
-    def __init__(self, stopwords_path: str = None, custom_dict_path: str = None):
+    def __init__(self, 
+                 stopwords_path: str = None, 
+                 custom_dict_path: str = None,
+                 entity_service_url: str = "http://127.0.0.1:50003/extract_entities",
+                 enable_entity_recognition: bool = True):
         """
         初始化文本处理器
         
         Args:
             stopwords_path: 停用词文件路径
             custom_dict_path: 自定义词典文件路径
+            entity_service_url: 实体识别服务URL
+            enable_entity_recognition: 是否启用实体识别
         """
         self.stopwords = self._load_stopwords(stopwords_path)
         
         if custom_dict_path and os.path.exists(custom_dict_path):
             jieba.load_userdict(custom_dict_path)
         
-        # 故障相关关键词模式
+        # 实体识别器
+        self.enable_entity_recognition = enable_entity_recognition
+        if enable_entity_recognition:
+            try:
+                self.entity_recognizer = EntityRecognizer(
+                    service_url=entity_service_url,
+                    timeout=10,
+                    fallback_enabled=True
+                )
+            except Exception as e:
+                print(f"实体识别器初始化失败，使用规则匹配: {e}")
+                self.entity_recognizer = None
+                self.enable_entity_recognition = False
+        else:
+            self.entity_recognizer = None
+        
+        # 故障相关关键词模式（作为回退方案）
         self.fault_patterns = {
             FaultType.OPERATION: {
-                'keywords': ['启动', '停止', '运行', '操作', '按下', '开启', '关闭', '切换', '调整'],
-                'patterns': [r'(.{0,5})(启动|停止|运行|操作|按下|开启|关闭|切换|调整)(.{0,5})']
+                'keywords': ['启动', '停止', '运行', '操作', '按下', '开启', '关闭', '切换', '调整', '自动换刀'],
+                'patterns': [r'(.{0,5})(启动|停止|运行|操作|按下|开启|关闭|切换|调整|自动换刀)(.{0,5})']
             },
             FaultType.PHENOMENON: {
-                'keywords': ['报警', '异响', '振动', '温度高', '不工作', '故障', '错误', '停止', '卡住'],
-                'patterns': [r'(.{0,5})(报警|异响|振动|温度高|不工作|故障|错误|停止|卡住)(.{0,5})']
+                'keywords': ['报警', '异响', '振动', '温度高', '不工作', '故障', '错误', '停止', '卡住', '不到位'],
+                'patterns': [r'(.{0,5})(报警|异响|振动|温度高|不工作|故障|错误|停止|卡住|不到位)(.{0,5})']
             },
             FaultType.LOCATION: {
-                'keywords': ['主轴', '刀库', '伺服', '液压', '电机', '轴承', '丝杠', '导轨', '控制器'],
-                'patterns': [r'(.{0,3})(主轴|刀库|伺服|液压|电机|轴承|丝杠|导轨|控制器)(.{0,3})']
+                'keywords': ['主轴', '刀库', '伺服', '液压', '电机', '轴承', '丝杠', '导轨', '控制器', '刀链'],
+                'patterns': [r'(.{0,3})(主轴|刀库|伺服|液压|电机|轴承|丝杠|导轨|控制器|刀链)(.{0,3})']
             },
             FaultType.ALARM: {
                 'keywords': ['ALM', 'ALARM', '警报', '报警码'],
@@ -115,7 +138,7 @@ class TextProcessor:
     
     def extract_fault_elements(self, text: str) -> List[FaultElement]:
         """
-        提取故障元素
+        提取故障元素（增强版本）
         
         Args:
             text: 故障描述文本
@@ -123,6 +146,26 @@ class TextProcessor:
         Returns:
             故障元素列表
         """
+        elements = []
+        
+        # 首先尝试使用实体识别服务
+        if self.enable_entity_recognition and self.entity_recognizer:
+            try:
+                ner_elements = self.entity_recognizer.extract_entities(text)
+                elements.extend(ner_elements)
+                print(f"实体识别提取到 {len(ner_elements)} 个元素")
+            except Exception as e:
+                print(f"实体识别失败，使用规则匹配: {e}")
+                # 如果实体识别失败，使用规则匹配
+                elements = self._extract_with_rules(text)
+        else:
+            # 使用原有的规则匹配方法
+            elements = self._extract_with_rules(text)
+        
+        return elements
+    
+    def _extract_with_rules(self, text: str) -> List[FaultElement]:
+        """使用规则匹配提取故障元素（原有方法）"""
         elements = []
         
         for fault_type, config in self.fault_patterns.items():
@@ -259,3 +302,24 @@ class TextProcessor:
         union = words1 | words2
         
         return len(intersection) / len(union) if union else 0.0
+    
+    def get_entity_recognition_status(self) -> Dict[str, any]:
+        """获取实体识别状态"""
+        if not self.entity_recognizer:
+            return {
+                "enabled": False,
+                "service_available": False,
+                "fallback_mode": True
+            }
+        
+        status = self.entity_recognizer.get_service_status()
+        status["enabled"] = self.enable_entity_recognition
+        status["fallback_mode"] = not status.get("service_available", False)
+        
+        return status
+    
+    def refresh_entity_service(self):
+        """刷新实体识别服务状态"""
+        if self.entity_recognizer:
+            return self.entity_recognizer.refresh_service_status()
+        return False

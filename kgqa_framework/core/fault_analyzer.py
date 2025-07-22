@@ -23,7 +23,9 @@ class FaultAnalyzer:
                  vectorizer_path: str = None,
                  stopwords_path: str = None,
                  custom_dict_path: str = None,
-                 enable_web_search: bool = True):
+                 enable_web_search: bool = True,
+                 entity_service_url: str = "http://127.0.0.1:50003/extract_entities",
+                 enable_entity_recognition: bool = True):
         """
         初始化故障分析器
         
@@ -36,6 +38,8 @@ class FaultAnalyzer:
             stopwords_path: 停用词文件路径
             custom_dict_path: 自定义词典路径
             enable_web_search: 是否启用网络搜索
+            entity_service_url: 实体识别服务URL
+            enable_entity_recognition: 是否启用实体识别
         """
         self.logger = logging.getLogger(__name__)
         
@@ -44,7 +48,9 @@ class FaultAnalyzer:
             # 文本处理器
             self.text_processor = TextProcessor(
                 stopwords_path=stopwords_path,
-                custom_dict_path=custom_dict_path
+                custom_dict_path=custom_dict_path,
+                entity_service_url=entity_service_url,
+                enable_entity_recognition=enable_entity_recognition
             )
             
             # 知识图谱引擎
@@ -198,7 +204,8 @@ class FaultAnalyzer:
             },
             "text_processor": {
                 "ready": True
-            }
+            },
+            "entity_recognition": self.text_processor.get_entity_recognition_status()
         }
         
         try:
