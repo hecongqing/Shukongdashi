@@ -18,6 +18,30 @@ class FaultType(Enum):
     SOLUTION = "解决方案"   # 解决方法
 
 
+class EntityType(Enum):
+    """实体类型枚举"""
+    SUBJECT = "主体"               # 主体
+    OBJECT = "客体"                # 客体
+    COMPONENT_UNIT = "部件单元"     # 部件单元
+    FAULT_STATE = "故障状态"        # 故障状态
+    PERFORMANCE_FEATURE = "性能表征"  # 性能表征
+    DETECTION_TOOL = "检测工具"      # 检测工具
+
+
+class RelationType(Enum):
+    """关系类型枚举"""
+    COMPONENT_FAULT = "部件故障"     # 部件故障关系
+    PERFORMANCE_FAULT = "性能故障"   # 性能故障关系
+    DETECTION_TOOL_REL = "检测工具"  # 检测工具关系
+    COMPOSITION = "组成"             # 组成关系
+    # 原有关系类型保持兼容
+    CX = "操作导致现象"
+    XY = "现象导致原因" 
+    XX = "现象关联现象"
+    XB = "现象关联部位"
+    XJ = "现象关联报警"
+
+
 @dataclass
 class FaultElement:
     """故障元素"""
