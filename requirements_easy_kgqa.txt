@@ -5,6 +5,7 @@
 neo4j==5.3.0               # Neo4j Python驱动
 jieba==0.42.1              # 中文分词
 requests==2.28.1           # HTTP请求库
+PyYAML==6.0                # YAML配置文件支持
 
 # 数据处理
 dataclasses==0.6           # 数据类支持（Python 3.6需要）

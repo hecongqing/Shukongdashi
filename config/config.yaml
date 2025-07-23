@@ -1,0 +1,21 @@
+# KGQA框架配置文件
+database:
+  neo4j:
+    uri: "bolt://localhost:50002"
+    username: "neo4j"
+    password: "password"
+
+# 实体识别服务
+entity_service:
+  url: "http://127.0.0.1:50003/extract_entities"
+
+# 系统设置
+system:
+  max_query_results: 10
+  min_confidence_threshold: 0.5
+  log_level: "INFO"
+
+# API设置
+api:
+  host: "0.0.0.0"
+  port: 8000
